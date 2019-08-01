@@ -19,6 +19,10 @@ restapi:
 etcd:
   host: 127.0.0.1:2379
 
+# zookeeper:
+#   krbsrvname: zkdev
+#   hosts: 127.0.0.1:2379
+
 bootstrap:
   # this section will be written into Etcd:/<namespace>/<scope>/config after initializing new cluster
   # and all other cluster members will use it as a `global configuration`

@@ -2,6 +2,7 @@ import json
 import logging
 import select
 import time
+import kerberos
 
 from kazoo.client import KazooClient, KazooState, KazooRetry
 from kazoo.exceptions import NoNodeError, NodeExistsError
@@ -60,13 +61,16 @@ class ZooKeeper(AbstractDCS):
         super(ZooKeeper, self).__init__(config)
 
         hosts = config.get('hosts', [])
+        krbsrvname = config.get('krbsrvname')
+
         if isinstance(hosts, list):
             hosts = ','.join(hosts)
 
         self._client = KazooClient(hosts, handler=PatroniSequentialThreadingHandler(config['retry_timeout']),
                                    timeout=config['ttl'], connection_retry=KazooRetry(max_delay=1, max_tries=-1,
                                    sleep_func=time.sleep), command_retry=KazooRetry(deadline=config['retry_timeout'],
-                                   max_delay=1, max_tries=-1, sleep_func=time.sleep))
+                                   max_delay=1, max_tries=-1, sleep_func=time.sleep),
+                                   auth_data[('kerberos', krbsrvname, _get_krb_tkt)] if krbsrvname else None)
         self._client.add_listener(self.session_listener)
 
         self._fetch_cluster = True
@@ -346,3 +350,17 @@ class ZooKeeper(AbstractDCS):
         if super(ZooKeeper, self).watch(leader_index, timeout):
             self._fetch_cluster = True
         return self._fetch_cluster
+
+    def _get_krb_tkt(self, host, krbsrvname):
+        try:
+            res, ctx = kerberos.authGSSClientInit (krbsrvname + '@' + host)
+            if res != 1:
+                logger.error("Failed to init GSS client, error: %s", res)
+                return None
+            kerberos.authGSSClientStep(ctx, "")
+            tkt = kerberos.authGSSClientResponse(ctx)
+            kerberos.authGSSClientClean(ctx)
+            return tkt
+        except:
+            logger.exception('failed to get kerberos ticket')
+            return None
